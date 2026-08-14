@@ -5,8 +5,8 @@ remote URL's host and path — similar to how Go organizes its workspace source
 tree.
 
 ```
-src-get git@github.com:jhulten/git-get.git
-# → clones to $HOME/src/github.com/jhulten/git-get
+src-get git@github.com:jhulten/src-get.git
+# → clones to $HOME/src/github.com/jhulten/src-get
 
 src-get https://gitlab.com/myorg/team/subteam/myrepo.git
 # → clones to $HOME/src/gitlab.com/myorg/team/subteam/myrepo

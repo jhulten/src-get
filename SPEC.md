@@ -1,16 +1,16 @@
-# git-get Specification
+# src-get Specification
 
 ## Overview
 
-`git-get` clones a git repository into a structured directory hierarchy that mirrors the remote URL's host and path components — similar to how Go organizes workspace source trees.
+`src-get` clones a git repository into a structured directory hierarchy that mirrors the remote URL's host and path components — similar to how Go organizes workspace source trees.
 
 **Example:**
 
 ```
-git-get git@github.com:jhulten/git-get.git
-# → clones to $HOME/src/github.com/jhulten/git-get
+src-get git@github.com:jhulten/src-get.git
+# → clones to $HOME/src/github.com/jhulten/src-get
 
-git-get https://gitlab.com/myorg/team/subteam/myrepo.git
+src-get https://gitlab.com/myorg/team/subteam/myrepo.git
 # → clones to $HOME/src/gitlab.com/myorg/team/subteam/myrepo
 ```
 
@@ -19,7 +19,7 @@ git-get https://gitlab.com/myorg/team/subteam/myrepo.git
 ## CLI Interface
 
 ```
-git-get <url> [--src-dir <path>] [-- <git-flags>]
+src-get <url> [--src-dir <path>] [-- <git-flags>]
 ```
 
 ### Positional Arguments
@@ -39,7 +39,7 @@ git-get <url> [--src-dir <path>] [-- <git-flags>]
 Everything after `--` is forwarded verbatim to `git clone`. Example:
 
 ```
-git-get https://github.com/owner/repo -- --depth 1 --branch main
+src-get https://github.com/owner/repo -- --depth 1 --branch main
 ```
 
 ---
@@ -79,8 +79,8 @@ Where `<path-components>` is the full path from the URL, preserving all intermed
 
 | URL | Target Directory |
 |-----|-----------------|
-| `git@github.com:jhulten/git-get.git` | `<root>/github.com/jhulten/git-get` |
-| `https://github.com/jhulten/git-get` | `<root>/github.com/jhulten/git-get` |
+| `git@github.com:jhulten/src-get.git` | `<root>/github.com/jhulten/src-get` |
+| `https://github.com/jhulten/src-get` | `<root>/github.com/jhulten/src-get` |
 | `https://gitlab.com/org/team/sub/repo.git` | `<root>/gitlab.com/org/team/sub/repo` |
 
 ### `.git` Suffix
@@ -125,8 +125,8 @@ If the target directory already exists:
 **Example:**
 
 ```
-git-get git@github.com:jhulten/git-get.git -- --bare
-# → clones to $HOME/src/github.com/jhulten/git-get.git
+src-get git@github.com:jhulten/src-get.git -- --bare
+# → clones to $HOME/src/github.com/jhulten/src-get.git
 ```
 
 ---
@@ -134,8 +134,8 @@ git-get git@github.com:jhulten/git-get.git -- --bare
 ## Git Output and Exit Codes
 
 - git's stdout and stderr are streamed directly to the terminal (not buffered or suppressed).
-- On git failure, `git-get` exits with the same exit code git returned.
-- On success, `git-get` exits with code `0`.
+- On git failure, `src-get` exits with the same exit code git returned.
+- On success, `src-get` exits with code `0`.
 
 ---
 
@@ -185,7 +185,7 @@ src-get() {
 - **Short aliases:** `gh:owner/repo` → `git@github.com:owner/repo`, `glab:` → GitLab equivalent.
 - **Multiple URLs in one invocation.**
 - **Fish shell integration.**
-- **`git-get update`** subcommand to fetch/pull all repos under `$SRC_DIR`.
+- **`src-get update`** subcommand to fetch/pull all repos under `$SRC_DIR`.
 
 ---
 
@@ -194,4 +194,4 @@ src-get() {
 - Language: Python ≥ 3.13
 - CLI parsing: `argparse` (stdlib only — no external dependencies)
 - Build backend: `uv_build`
-- Entry point: `git-get` (defined in `[project.scripts]`)
+- Entry point: `src-get` (defined in `[project.scripts]`)
