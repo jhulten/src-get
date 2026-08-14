@@ -25,3 +25,35 @@ jobs:
 
       - name: Build package
         run: uv build
+
+  build-dev-artifact:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.13"
+
+      - name: Compute dev version
+        id: version
+        run: |
+          base_version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          short_sha=$(git rev-parse --short HEAD)
+          dev_version="${base_version}.dev0+g${short_sha}"
+          echo "version=${dev_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Set dev version
+        run: sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" pyproject.toml
+
+      - name: Build package
+        run: uv build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: src-get-${{ steps.version.outputs.version }}
+          path: dist/*
