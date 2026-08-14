@@ -90,33 +90,50 @@ uv run pytest
 
 ## Release
 
-Releases are cut manually via a [mise](https://mise.jdx.dev) task — there's no
-automated version-bump workflow.
+Releases are cut manually via two [mise](https://mise.jdx.dev) tasks — `main`
+requires a reviewed, merged PR (see `protect-main` in the repo's rulesets), so
+the release process is split around that merge instead of pushing to `main`
+directly.
+
+### 1. Start the release
 
 ```sh
 mise run release <version>
 ```
 
-This runs the full release sequence in order:
-
-1. Bump the version: `uv version <version>`. Updates `pyproject.toml` and
+1. Branches from `main` as `release/v<version>`.
+2. Bumps the version: `uv version <version>` — updates `pyproject.toml` and
    re-locks `uv.lock`.
-2. Run the test suite: `uv run pytest`
-3. Build the package: `uv build`
-4. Commit the version bump: `git commit -am "Release v<version>"`
-5. Tag and push: `git tag v<version> && git push origin main --tags`
-6. Publish a GitHub release with the built artifacts:
+3. Runs the test suite and does a sanity build: `uv run pytest`, `uv build`.
+4. Commits the version bump and pushes the branch.
+5. Opens a PR against `main` with `gh pr create`.
+
+Get the PR reviewed and merged like any other change.
+
+### 2. Finish the release
+
+Once the PR is merged:
+
+```sh
+mise run release-finish <version>
+```
+
+1. Pulls `main` and confirms the merged version matches `<version>` (fails
+   loudly if the PR hasn't landed yet).
+2. Builds the package fresh from the merged commit: `rm -rf dist && uv build`
+   — the artifact that gets tagged and published is built from `main`'s
+   actual history, not the pre-merge branch build.
+3. Tags `v<version>` and pushes just the tag.
+4. Publishes a GitHub release with the built artifacts:
    `gh release create v<version> dist/* --generate-notes`
 
-The task aborts if `<version>` is omitted, and each step must succeed before
-the next runs (`set -euo pipefail`) — a failed test run or build stops the
-release before anything is tagged or pushed.
+Both tasks abort if `<version>` is omitted, and each step must succeed before
+the next runs (`set -euo pipefail`).
 
-Publishing to PyPI happens automatically after step 6: the GitHub Release
+Publishing to PyPI happens automatically after step 4: the GitHub Release
 triggers `.github/workflows/publish.yml`, which downloads the wheel/sdist
-already attached to that release (built once, in step 3 above — not rebuilt
-in CI) and publishes them via
-[PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+already attached to that release (not rebuilt again in CI) and publishes them
+via [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
 (OIDC — no stored API tokens). That workflow runs against the `pypi`
 [GitHub environment](https://github.com/jhulten/src-get/settings/environments),
 which requires manual approval on each run before it's allowed to publish.
