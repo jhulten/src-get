@@ -112,7 +112,15 @@ The task aborts if `<version>` is omitted, and each step must succeed before
 the next runs (`set -euo pipefail`) — a failed test run or build stops the
 release before anything is tagged or pushed.
 
-There's no PyPI publishing step yet — releases ship as GitHub Releases with
-attached wheel/sdist files. CI separately builds and uploads a dev-versioned
-artifact (`<version>.dev0+g<sha>`) as a build artifact on every push to
-`main`, independent of this manual release process.
+Publishing to PyPI happens automatically after step 6: the GitHub Release
+triggers `.github/workflows/publish.yml`, which downloads the wheel/sdist
+already attached to that release (built once, in step 3 above — not rebuilt
+in CI) and publishes them via
+[PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+(OIDC — no stored API tokens). That workflow runs against the `pypi`
+[GitHub environment](https://github.com/jhulten/src-get/settings/environments),
+which requires manual approval on each run before it's allowed to publish.
+
+CI separately builds and uploads a dev-versioned artifact
+(`<version>.dev0+g<sha>`) as a build artifact on every push to `main`,
+independent of this release process — that one never touches PyPI.
