@@ -17,10 +17,14 @@ def parse_url(url: str) -> tuple[str, list[str]]:
       - SSH scp-style:  git@github.com:owner/repo.git
       - SSH URL:        ssh://git@github.com/owner/repo.git
       - HTTPS:          https://github.com/owner/repo[.git]
-      - git://          git://github.com/owner/repo.git
     """
     # scp-style SSH: git@host:path/to/repo.git
-    if not url.startswith(("http://", "https://", "ssh://", "git://")):
+    if not url.startswith(("http://", "https://", "ssh://")):
+        if "://" in url:
+            raise ValueError(
+                f"Unsupported URL format: {url!r}. "
+                "Expected SSH (git@host:path), ssh://, or https:// URL."
+            )
         if ":" in url:
             host_part, path_part = url.split(":", 1)
             # host_part may be user@host — extract host
@@ -31,7 +35,7 @@ def parse_url(url: str) -> tuple[str, list[str]]:
             return host, components
         raise ValueError(
             f"Unsupported URL format: {url!r}. "
-            "Expected SSH (git@host:path), ssh://, https://, or git:// URL."
+            "Expected SSH (git@host:path), ssh://, or https:// URL."
         )
 
     parsed = urlparse(url)

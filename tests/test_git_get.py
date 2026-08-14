@@ -51,6 +51,10 @@ class TestParseUrl:
         with pytest.raises(ValueError, match="Could not determine host"):
             parse_url("https:///owner/repo.git")
 
+    def test_git_scheme_unsupported_raises(self):
+        with pytest.raises(ValueError, match="Unsupported URL format"):
+            parse_url("git://github.com/owner/repo.git")
+
 
 class TestResolveRoot:
     def test_flag_takes_precedence(self, monkeypatch, tmp_path):
