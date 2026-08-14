@@ -1,0 +1,18 @@
+[project]
+name = "src-get"
+version = "0.1.0"
+description = "Clone git repositories into a structured directory hierarchy mirroring the remote host and path, similar to Go's workspace layout."
+readme = "README.md"
+authors = [{ name = "Jeffrey Hulten", email = "jhulten@gmail.com" }]
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+src-get = "src_get:main"
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"

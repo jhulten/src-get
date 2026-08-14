@@ -1,0 +1,4 @@
+[tools]
+pi = "latest"
+uv = "latest"
+python = "3.13"
