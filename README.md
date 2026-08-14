@@ -87,3 +87,32 @@ the binary directly.
 uv sync
 uv run pytest
 ```
+
+## Release
+
+Releases are cut manually via a [mise](https://mise.jdx.dev) task — there's no
+automated version-bump workflow.
+
+```sh
+mise run release <version>
+```
+
+This runs the full release sequence in order:
+
+1. Bump the version: `uv version <version>`. Updates `pyproject.toml` and
+   re-locks `uv.lock`.
+2. Run the test suite: `uv run pytest`
+3. Build the package: `uv build`
+4. Commit the version bump: `git commit -am "Release v<version>"`
+5. Tag and push: `git tag v<version> && git push origin main --tags`
+6. Publish a GitHub release with the built artifacts:
+   `gh release create v<version> dist/* --generate-notes`
+
+The task aborts if `<version>` is omitted, and each step must succeed before
+the next runs (`set -euo pipefail`) — a failed test run or build stops the
+release before anything is tagged or pushed.
+
+There's no PyPI publishing step yet — releases ship as GitHub Releases with
+attached wheel/sdist files. CI separately builds and uploads a dev-versioned
+artifact (`<version>.dev0+g<sha>`) as a build artifact on every push to
+`main`, independent of this manual release process.

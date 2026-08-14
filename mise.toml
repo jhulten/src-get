@@ -2,3 +2,22 @@
 pi = "latest"
 uv = "latest"
 python = "3.13"
+
+[tasks.release]
+description = "Cut a release: bump version, test, build, tag, push, publish GitHub release"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -z "${1:-}" ]; then
+  echo "usage: mise run release <version>" >&2
+  exit 1
+fi
+version="$1"
+uv version "$version"
+uv run pytest
+uv build
+git commit -am "Release v${version}"
+git tag "v${version}"
+git push origin main --tags
+gh release create "v${version}" dist/* --generate-notes
+'''
