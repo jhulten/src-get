@@ -90,10 +90,9 @@ uv run pytest
 
 ## Release
 
-Releases are cut manually via two [mise](https://mise.jdx.dev) tasks — `main`
-requires a reviewed, merged PR (see `protect-main` in the repo's rulesets), so
-the release process is split around that merge instead of pushing to `main`
-directly.
+`main` requires a reviewed, merged PR (see `protect-main` in the repo's
+rulesets), so releases start locally but finish in CI once the version bump
+actually lands on `main`.
 
 ### 1. Start the release
 
@@ -110,33 +109,27 @@ mise run release <version>
 
 Get the PR reviewed and merged like any other change.
 
-### 2. Finish the release
+### 2. CI finishes the release automatically
 
-Once the PR is merged:
+`.github/workflows/finish-release.yml` triggers on any push to `main` that
+touches `pyproject.toml` — which a merged release PR always does:
 
-```sh
-mise run release-finish <version>
-```
+1. **`detect-version`** reads the version at `main`'s tip and checks whether a
+   `v<version>` tag already exists. If it does (an unrelated `pyproject.toml`
+   change, or this version was already released), the workflow stops here.
+2. **`finish-release`** (only for a genuinely new version) builds the package
+   fresh from `main`'s actual merged history, tags `v<version>`, pushes the
+   tag, and publishes a GitHub release with the built artifacts.
+3. **`publish-pypi`** takes the exact artifact `finish-release` built (handed
+   off via a workflow artifact, not rebuilt) and publishes it via
+   [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC
+   — no stored API tokens). This job runs against the `pypi`
+   [GitHub environment](https://github.com/jhulten/src-get/settings/environments),
+   which requires manual approval on each run before it's allowed to publish.
 
-1. Pulls `main` and confirms the merged version matches `<version>` (fails
-   loudly if the PR hasn't landed yet).
-2. Builds the package fresh from the merged commit: `rm -rf dist && uv build`
-   — the artifact that gets tagged and published is built from `main`'s
-   actual history, not the pre-merge branch build.
-3. Tags `v<version>` and pushes just the tag.
-4. Publishes a GitHub release with the built artifacts:
-   `gh release create v<version> dist/* --generate-notes`
-
-Both tasks abort if `<version>` is omitted, and each step must succeed before
-the next runs (`set -euo pipefail`).
-
-Publishing to PyPI happens automatically after step 4: the GitHub Release
-triggers `.github/workflows/publish.yml`, which downloads the wheel/sdist
-already attached to that release (not rebuilt again in CI) and publishes them
-via [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
-(OIDC — no stored API tokens). That workflow runs against the `pypi`
-[GitHub environment](https://github.com/jhulten/src-get/settings/environments),
-which requires manual approval on each run before it's allowed to publish.
+Releases and tags are never created by pushing directly to `main` — only by
+`finish-release` reacting to a merge, which keeps the whole flow compatible
+with `main` requiring PRs.
 
 CI separately builds and uploads a dev-versioned artifact
 (`<version>.dev0+g<sha>`) as a build artifact on every push to `main`,

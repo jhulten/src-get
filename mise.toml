@@ -26,39 +26,9 @@ uv build
 git commit -am "Release v${version}"
 git push -u origin "$branch"
 gh pr create --title "Release v${version}" --base main --head "$branch" \
-  --body "Release v${version}. Run \`mise run release-finish ${version}\` after this merges."
+  --body "Release v${version}."
 
 echo
-echo "PR opened. Once it's reviewed and merged, run:"
-echo "  mise run release-finish ${version}"
-'''
-
-[tasks.release-finish]
-description = "Finish a release after its PR is merged: tag, build, publish GitHub release"
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-if [ -z "${1:-}" ]; then
-  echo "usage: mise run release-finish <version>" >&2
-  exit 1
-fi
-version="$1"
-
-git checkout main
-git pull origin main
-
-current_version=$(uv version --short)
-if [ "$current_version" != "$version" ]; then
-  echo "error: main is at version ${current_version}, expected ${version}." >&2
-  echo "Has the release v${version} PR been merged yet?" >&2
-  exit 1
-fi
-
-rm -rf dist
-uv build
-git tag "v${version}"
-git push origin "v${version}"
-gh release create "v${version}" dist/* --generate-notes
-
-git branch -d "release/v${version}" 2>/dev/null || true
+echo "PR opened. Once it's reviewed and merged, .github/workflows/finish-release.yml"
+echo "tags, builds, and publishes the release (and PyPI package) automatically."
 '''
