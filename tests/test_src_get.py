@@ -9,9 +9,9 @@ from src_get import parse_url, resolve_root, target_directory
 
 class TestParseUrl:
     def test_ssh_scp_style(self):
-        host, parts = parse_url("git@github.com:jhulten/git-get.git")
+        host, parts = parse_url("git@github.com:jhulten/src-get.git")
         assert host == "github.com"
-        assert parts == ["jhulten", "git-get.git"]
+        assert parts == ["jhulten", "src-get.git"]
 
     def test_ssh_scp_style_nested(self):
         host, parts = parse_url("git@gitlab.com:org/team/sub/repo.git")
@@ -19,14 +19,14 @@ class TestParseUrl:
         assert parts == ["org", "team", "sub", "repo.git"]
 
     def test_https(self):
-        host, parts = parse_url("https://github.com/jhulten/git-get.git")
+        host, parts = parse_url("https://github.com/jhulten/src-get.git")
         assert host == "github.com"
-        assert parts == ["jhulten", "git-get.git"]
+        assert parts == ["jhulten", "src-get.git"]
 
     def test_https_no_git_suffix(self):
-        host, parts = parse_url("https://github.com/jhulten/git-get")
+        host, parts = parse_url("https://github.com/jhulten/src-get")
         assert host == "github.com"
-        assert parts == ["jhulten", "git-get"]
+        assert parts == ["jhulten", "src-get"]
 
     def test_https_nested_gitlab(self):
         host, parts = parse_url("https://gitlab.com/org/team/subteam/myrepo.git")
@@ -83,13 +83,13 @@ class TestResolveRoot:
 class TestTargetDirectory:
     def test_strips_git_suffix(self):
         root = Path("/src")
-        target = target_directory(root, "github.com", ["jhulten", "git-get.git"], bare=False)
-        assert target == Path("/src/github.com/jhulten/git-get")
+        target = target_directory(root, "github.com", ["jhulten", "src-get.git"], bare=False)
+        assert target == Path("/src/github.com/jhulten/src-get")
 
     def test_keeps_git_suffix_when_bare(self):
         root = Path("/src")
-        target = target_directory(root, "github.com", ["jhulten", "git-get.git"], bare=True)
-        assert target == Path("/src/github.com/jhulten/git-get.git")
+        target = target_directory(root, "github.com", ["jhulten", "src-get.git"], bare=True)
+        assert target == Path("/src/github.com/jhulten/src-get.git")
 
     def test_nested_gitlab_path(self):
         root = Path("/src")
