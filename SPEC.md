@@ -141,30 +141,42 @@ git-get git@github.com:jhulten/git-get.git -- --bare
 
 ## Shell Integration
 
-Because a subprocess cannot change the parent shell's working directory, `git-get` ships shell integration snippets for **bash** and **zsh**.
+Because a subprocess cannot change the parent shell's working directory, `src-get` ships a shell integration snippet for **bash** and **zsh** (`shell/src-get.sh`).
 
-The integration wraps `git-get` in a shell function that:
-1. Runs the `git-get` binary, capturing the final line of output as the repo path.
+Git's own output goes to the terminal directly (it isn't captured or redirected), and `src-get` prints only the final repo path on stdout. This lets the shell function capture stdout via command substitution — which excludes git's output — while git's progress/status output still streams straight to the terminal unaffected.
+
+The integration wraps `src-get` in a shell function that:
+1. Runs the `src-get` binary, capturing stdout (the repo path) via command substitution.
 2. On success, `cd`s to that path.
 3. On failure, propagates the exit code without changing directory.
 
 ### Installation (bash / zsh)
 
-Add to `~/.bashrc` or `~/.zshrc`:
+Source `shell/src-get.sh` from `~/.bashrc` or `~/.zshrc`:
 
 ```sh
-git-get() {
-  local repo_path
-  repo_path=$(command git-get "$@" | tee /dev/stderr | tail -1)
-  local exit_code=${PIPESTATUS[0]}
-  if [ $exit_code -eq 0 ] && [ -n "$repo_path" ]; then
-    cd "$repo_path"
+source /path/to/src-get/shell/src-get.sh
+```
+
+Or add the function directly:
+
+```sh
+src-get() {
+  local repo_path exit_code
+
+  # Capture stdout (repo path) only; stderr (git output) flows to the terminal.
+  repo_path=$(command src-get "$@")
+  exit_code=$?
+
+  if [ "$exit_code" -eq 0 ] && [ -n "$repo_path" ]; then
+    cd "$repo_path" || return 1
   fi
-  return $exit_code
+
+  return "$exit_code"
 }
 ```
 
-> **Note:** The shell function shadows the binary. Use `command git-get` to invoke the binary directly.
+> **Note:** The shell function shadows the binary. Use `command src-get` to invoke the binary directly.
 
 ---
 

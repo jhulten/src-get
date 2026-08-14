@@ -1,6 +1,6 @@
-# git-get shell integration for bash and zsh
+# src-get shell integration for bash and zsh
 #
-# Wraps the git-get binary so that on success the shell automatically
+# Wraps the src-get binary so that on success the shell automatically
 # changes into the cloned/updated repository directory.
 #
 # The binary writes git output to stderr and prints only the repo path
@@ -8,7 +8,7 @@
 #
 # Usage: source this file in your ~/.bashrc or ~/.zshrc
 #
-#   source /path/to/git-get/shell/git-get.sh
+#   source /path/to/src-get/shell/src-get.sh
 #
 # Or, if installed via pip/uv into your PATH, just add the function below
 # directly to your shell rc file.
