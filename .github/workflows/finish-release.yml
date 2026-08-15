@@ -41,7 +41,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The protect-versions ruleset only allows repo admins to bypass tag
+      # creation restrictions, and a GITHUB_TOKEN push doesn't count as one
+      # — so tagging needs a PAT belonging to an actual admin.
       - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
