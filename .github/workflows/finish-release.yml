@@ -41,12 +41,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      # The protect-versions ruleset only allows repo admins to bypass tag
-      # creation restrictions, and a GITHUB_TOKEN push doesn't count as one
-      # — so tagging needs a PAT belonging to an actual admin.
+      # Don't persist a credential here: the tag push below needs an
+      # admin-bypass-capable PAT, and leaving it in .git/config for the
+      # whole job would expose it to every later step (uv build running
+      # arbitrary build-backend code, third-party actions, etc.).
       - uses: actions/checkout@v7
         with:
-          token: ${{ secrets.RELEASE_PAT }}
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
@@ -58,10 +59,13 @@ jobs:
         run: uv build
 
       - name: Tag release
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
         run: |
           version="${{ needs.detect-version.outputs.version }}"
           git tag "v${version}"
-          git push origin "v${version}"
+          auth_header="AUTHORIZATION: basic $(printf '%s' "x-access-token:${RELEASE_PAT}" | base64 -w0)"
+          git -c http.https://github.com/.extraheader="$auth_header" push origin "v${version}"
 
       - name: Create GitHub release
         env:
