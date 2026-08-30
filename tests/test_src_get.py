@@ -117,11 +117,15 @@ class FakeCompletedProcess:
 def make_fake_run(returncode=0, calls=None, *, raises=None, create_target=None):
     """Build a fake subprocess.run that records invocations.
 
-    - returncode: value returned for every call.
+    - returncode: value returned for every call, or a dict mapping the git
+      subcommand (e.g. "fetch") to its return code.
     - calls: list to append (args, cwd) tuples to.
     - raises: exception instance to raise instead of returning.
     - create_target: if set, a Path created when a clone command is seen
-      (simulates git clone materializing the target directory).
+      (simulates git clone materializing the target directory). Only the
+      leaf directory is created (no parents=True), so the fake requires
+      main() to have created target.parent first -- a regression that drops
+      that mkdir surfaces as FileNotFoundError.
     """
     if calls is None:
         calls = []
@@ -130,9 +134,11 @@ def make_fake_run(returncode=0, calls=None, *, raises=None, create_target=None):
         calls.append((cmd, cwd))
         if raises is not None:
             raise raises
-        if create_target is not None and len(cmd) >= 2 and cmd[1] == "clone":
-            create_target.mkdir(parents=True, exist_ok=True)
-        return FakeCompletedProcess(returncode)
+        subcommand = cmd[1] if len(cmd) >= 2 else None
+        if create_target is not None and subcommand == "clone":
+            create_target.mkdir(exist_ok=True)
+        code = returncode[subcommand] if isinstance(returncode, dict) else returncode
+        return FakeCompletedProcess(code)
 
     fake_run.calls = calls
     return fake_run
@@ -159,12 +165,16 @@ class TestMain:
 
         main()
 
-        # A single git clone was invoked with the URL and target path.
+        # A single git clone was invoked with the exact command and no cwd.
         assert len(fake_run.calls) == 1
         cmd, cwd = fake_run.calls[0]
-        assert cmd[:2] == ["git", "clone"]
-        assert "https://github.com/owner/repo.git" in cmd
-        assert str(target) in cmd
+        assert cmd == [
+            "git",
+            "clone",
+            "https://github.com/owner/repo.git",
+            str(target),
+        ]
+        assert cwd is None
         # Parent directory was created.
         assert target.parent.is_dir()
         # Target path is the last line of stdout.
@@ -212,6 +222,22 @@ class TestMain:
         assert exc.value.code == 7
         # Fetch failed, so pull must not have run.
         assert [cmd[1] for cmd, _ in fake_run.calls] == ["fetch"]
+
+    def test_pull_nonzero_exit_propagates(self, monkeypatch, tmp_path):
+        root = self._run_main(
+            monkeypatch, tmp_path, ["https://github.com/owner/repo.git"]
+        )
+        target = root / "github.com" / "owner" / "repo"
+        target.mkdir(parents=True)
+        # Fetch succeeds, pull fails with a distinct code.
+        fake_run = make_fake_run(returncode={"fetch": 0, "pull": 13})
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 13
+        # Both ran, in order.
+        assert [cmd[1] for cmd, _ in fake_run.calls] == ["fetch", "pull"]
 
     def test_git_not_found(self, monkeypatch, tmp_path, capsys):
         self._run_main(monkeypatch, tmp_path, ["https://github.com/owner/repo.git"])
