@@ -84,6 +84,20 @@ def run_git(args: list[str], cwd: Path | None = None) -> int:
         sys.exit(1)
 
 
+def find_blocking_file(target: Path) -> Path | None:
+    """Return the target or nearest ancestor that exists as a non-directory file.
+
+    When building the target directory (or creating its parents), any existing
+    path component that is a regular file rather than a directory makes the
+    operation impossible. Returns the offending path, or None if the path is
+    clear (every existing component along the way is a directory).
+    """
+    for candidate in [target, *target.parents]:
+        if candidate.exists() and not candidate.is_dir():
+            return candidate
+    return None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="src-get",
@@ -123,6 +137,14 @@ def main() -> None:
         target = target_directory(root, host, components, bare)
     except ValueError as exc:
         print(f"src-get: error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    blocking = find_blocking_file(target)
+    if blocking is not None:
+        print(
+            f"src-get: error: path exists but is not a directory: {blocking}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     if target.is_dir():

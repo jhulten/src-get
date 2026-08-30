@@ -315,3 +315,93 @@ class TestBarePassthrough:
         out = capsys.readouterr().out
         assert out.strip().splitlines()[-1] == str(target)
         assert not str(target).endswith(".git")
+
+
+class TestFilePathErrors:
+    """A file where a directory is expected yields a clean error, not a traceback."""
+
+    def _run_main(self, monkeypatch, argv_extra):
+        monkeypatch.delenv("SRC_DIR", raising=False)
+        monkeypatch.setattr("sys.argv", ["src-get"] + argv_extra)
+
+    def _no_git(self, monkeypatch):
+        """Install a git mock that fails loudly if git is ever invoked."""
+
+        def fake_run(cmd, cwd=None, **kwargs):
+            raise AssertionError(f"git should not run, got: {cmd}")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+    def test_root_is_a_file(self, monkeypatch, tmp_path, capsys):
+        root_file = tmp_path / "not-a-dir"
+        root_file.write_text("")
+        self._run_main(
+            monkeypatch,
+            ["--src-dir", str(root_file), "git@github.com:owner/repo.git"],
+        )
+        self._no_git(monkeypatch)
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert err.startswith("src-get: error:")
+        assert "Traceback" not in err
+        assert str(root_file) in err
+
+    def test_intermediate_component_is_a_file(self, monkeypatch, tmp_path, capsys):
+        root = tmp_path / "src"
+        root.mkdir()
+        # The host component of the target path already exists as a file.
+        (root / "github.com").write_text("")
+        self._run_main(
+            monkeypatch,
+            ["--src-dir", str(root), "git@github.com:owner/repo.git"],
+        )
+        self._no_git(monkeypatch)
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert err.startswith("src-get: error:")
+        assert "Traceback" not in err
+        assert str(root / "github.com") in err
+
+    def test_target_itself_is_a_file(self, monkeypatch, tmp_path, capsys):
+        root = tmp_path / "src"
+        target = root / "github.com" / "owner" / "repo"
+        target.parent.mkdir(parents=True)
+        target.write_text("")  # target path exists but is a regular file
+        self._run_main(
+            monkeypatch,
+            ["--src-dir", str(root), "git@github.com:owner/repo.git"],
+        )
+        self._no_git(monkeypatch)
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert err.startswith("src-get: error:")
+        assert "Traceback" not in err
+        assert str(target) in err
+
+    def test_valid_nested_root_still_clones(self, monkeypatch, tmp_path, capsys):
+        # Regression: a valid root needing intermediate dirs created still works.
+        root = tmp_path / "src"
+        self._run_main(
+            monkeypatch,
+            ["--src-dir", str(root), "git@github.com:owner/repo.git"],
+        )
+        target = root / "github.com" / "owner" / "repo"
+        fake_run = make_fake_run(returncode=0, create_target=target)
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        main()
+
+        cmd, _ = fake_run.calls[0]
+        assert cmd[:2] == ["git", "clone"]
+        assert target.parent.is_dir()
+        out = capsys.readouterr().out
+        assert out.strip().splitlines()[-1] == str(target)
