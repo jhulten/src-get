@@ -248,3 +248,70 @@ class TestMain:
             main()
         assert exc.value.code == 1
         assert "git not found" in capsys.readouterr().err
+
+
+class TestBarePassthrough:
+    """End-to-end coverage of --bare detection within the -- passthrough."""
+
+    def _run_main(self, monkeypatch, tmp_path, argv_extra):
+        monkeypatch.delenv("SRC_DIR", raising=False)
+        root = tmp_path / "src"
+        argv = ["src-get", "--src-dir", str(root)] + argv_extra
+        monkeypatch.setattr("sys.argv", argv)
+        return root
+
+    def test_bare_keeps_git_suffix_and_forwards_flag(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        url = "git@github.com:owner/repo.git"
+        root = self._run_main(monkeypatch, tmp_path, [url, "--", "--bare"])
+        target = root / "github.com" / "owner" / "repo.git"
+        fake_run = make_fake_run(returncode=0, create_target=target)
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        main()
+
+        cmd, cwd = fake_run.calls[0]
+        # --bare is forwarded to git clone, before the URL and target.
+        assert cmd == ["git", "clone", "--bare", url, str(target)]
+        assert cwd is None
+        # Target directory name retains the .git suffix.
+        out = capsys.readouterr().out
+        assert out.strip().splitlines()[-1] == str(target)
+        assert str(target).endswith("repo.git")
+
+    def test_without_bare_strips_git_suffix(self, monkeypatch, tmp_path, capsys):
+        url = "git@github.com:owner/repo.git"
+        root = self._run_main(monkeypatch, tmp_path, [url])
+        target = root / "github.com" / "owner" / "repo"
+        fake_run = make_fake_run(returncode=0, create_target=target)
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        main()
+
+        cmd, _ = fake_run.calls[0]
+        assert cmd == ["git", "clone", url, str(target)]
+        assert "--bare" not in cmd
+        out = capsys.readouterr().out
+        assert out.strip().splitlines()[-1] == str(target)
+        assert not str(target).endswith(".git")
+
+    def test_other_passthrough_flag_does_not_trigger_bare(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        url = "git@github.com:owner/repo.git"
+        root = self._run_main(monkeypatch, tmp_path, [url, "--", "--depth", "1"])
+        # --depth is not --bare, so the .git suffix is still stripped.
+        target = root / "github.com" / "owner" / "repo"
+        fake_run = make_fake_run(returncode=0, create_target=target)
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        main()
+
+        cmd, _ = fake_run.calls[0]
+        # Passthrough flags are forwarded to git clone; bare not triggered.
+        assert cmd == ["git", "clone", "--depth", "1", url, str(target)]
+        assert "--bare" not in cmd
+        out = capsys.readouterr().out
+        assert out.strip().splitlines()[-1] == str(target)
+        assert not str(target).endswith(".git")
