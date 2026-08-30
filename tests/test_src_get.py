@@ -1,10 +1,11 @@
 """Tests for src-get URL parsing and directory resolution."""
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from src_get import parse_url, resolve_root, target_directory
+from src_get import main, parse_url, resolve_root, target_directory
 
 
 class TestParseUrl:
@@ -106,3 +107,144 @@ class TestTargetDirectory:
     def test_empty_components_raises(self):
         with pytest.raises(ValueError):
             target_directory(Path("/src"), "github.com", [], bare=False)
+
+
+class FakeCompletedProcess:
+    def __init__(self, returncode: int):
+        self.returncode = returncode
+
+
+def make_fake_run(returncode=0, calls=None, *, raises=None, create_target=None):
+    """Build a fake subprocess.run that records invocations.
+
+    - returncode: value returned for every call, or a dict mapping the git
+      subcommand (e.g. "fetch") to its return code.
+    - calls: list to append (args, cwd) tuples to.
+    - raises: exception instance to raise instead of returning.
+    - create_target: if set, a Path created when a clone command is seen
+      (simulates git clone materializing the target directory). Only the
+      leaf directory is created (no parents=True), so the fake requires
+      main() to have created target.parent first -- a regression that drops
+      that mkdir surfaces as FileNotFoundError.
+    """
+    if calls is None:
+        calls = []
+
+    def fake_run(cmd, cwd=None, **kwargs):
+        calls.append((cmd, cwd))
+        if raises is not None:
+            raise raises
+        subcommand = cmd[1] if len(cmd) >= 2 else None
+        if create_target is not None and subcommand == "clone":
+            create_target.mkdir(exist_ok=True)
+        code = returncode[subcommand] if isinstance(returncode, dict) else returncode
+        return FakeCompletedProcess(code)
+
+    fake_run.calls = calls
+    return fake_run
+
+
+class TestMain:
+    """End-to-end coverage of main()'s clone/fetch/pull branching."""
+
+    def _run_main(self, monkeypatch, tmp_path, argv_extra=None):
+        """Set argv for main() with SRC_DIR unset and root at tmp_path/src."""
+        monkeypatch.delenv("SRC_DIR", raising=False)
+        root = tmp_path / "src"
+        argv = ["src-get", "--src-dir", str(root)] + (argv_extra or [])
+        monkeypatch.setattr("sys.argv", argv)
+        return root
+
+    def test_new_repo_clones(self, monkeypatch, tmp_path, capsys):
+        root = self._run_main(
+            monkeypatch, tmp_path, ["https://github.com/owner/repo.git"]
+        )
+        target = root / "github.com" / "owner" / "repo"
+        fake_run = make_fake_run(returncode=0, create_target=target)
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        main()
+
+        # A single git clone was invoked with the exact command and no cwd.
+        assert len(fake_run.calls) == 1
+        cmd, cwd = fake_run.calls[0]
+        assert cmd == [
+            "git",
+            "clone",
+            "https://github.com/owner/repo.git",
+            str(target),
+        ]
+        assert cwd is None
+        # Parent directory was created.
+        assert target.parent.is_dir()
+        # Target path is the last line of stdout.
+        out = capsys.readouterr().out
+        assert out.strip().splitlines()[-1] == str(target)
+
+    def test_existing_repo_fetches_then_pulls(self, monkeypatch, tmp_path, capsys):
+        root = self._run_main(
+            monkeypatch, tmp_path, ["https://github.com/owner/repo.git"]
+        )
+        target = root / "github.com" / "owner" / "repo"
+        target.mkdir(parents=True)
+        fake_run = make_fake_run(returncode=0)
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        main()
+
+        # git fetch then git pull, both against the target dir; no clone.
+        assert [cmd[1] for cmd, _ in fake_run.calls] == ["fetch", "pull"]
+        assert all(cwd == target for _, cwd in fake_run.calls)
+        assert all(cmd[1] != "clone" for cmd, _ in fake_run.calls)
+        out = capsys.readouterr().out
+        assert out.strip().splitlines()[-1] == str(target)
+
+    def test_clone_nonzero_exit_propagates(self, monkeypatch, tmp_path):
+        self._run_main(monkeypatch, tmp_path, ["https://github.com/owner/repo.git"])
+        fake_run = make_fake_run(returncode=42)
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 42
+
+    def test_fetch_nonzero_exit_propagates(self, monkeypatch, tmp_path):
+        root = self._run_main(
+            monkeypatch, tmp_path, ["https://github.com/owner/repo.git"]
+        )
+        target = root / "github.com" / "owner" / "repo"
+        target.mkdir(parents=True)
+        fake_run = make_fake_run(returncode=7)
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 7
+        # Fetch failed, so pull must not have run.
+        assert [cmd[1] for cmd, _ in fake_run.calls] == ["fetch"]
+
+    def test_pull_nonzero_exit_propagates(self, monkeypatch, tmp_path):
+        root = self._run_main(
+            monkeypatch, tmp_path, ["https://github.com/owner/repo.git"]
+        )
+        target = root / "github.com" / "owner" / "repo"
+        target.mkdir(parents=True)
+        # Fetch succeeds, pull fails with a distinct code.
+        fake_run = make_fake_run(returncode={"fetch": 0, "pull": 13})
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 13
+        # Both ran, in order.
+        assert [cmd[1] for cmd, _ in fake_run.calls] == ["fetch", "pull"]
+
+    def test_git_not_found(self, monkeypatch, tmp_path, capsys):
+        self._run_main(monkeypatch, tmp_path, ["https://github.com/owner/repo.git"])
+        fake_run = make_fake_run(raises=FileNotFoundError())
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 1
+        assert "git not found" in capsys.readouterr().err
