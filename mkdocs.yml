@@ -3,7 +3,10 @@ site_description: Clone git repositories into a structured directory hierarchy m
 site_author: Jeffrey Hulten
 repo_url: https://github.com/jhulten/src-get
 repo_name: jhulten/src-get
-edit_uri: edit/main/
+edit_uri: edit/main/docs/
+
+hooks:
+  - docs/hooks.py
 
 theme:
   name: material
