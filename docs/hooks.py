@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def on_page_context(context, page, config, nav):
-    repo_url = str(config.get("repo_url", "")).rstrip("/")
+    repo_url = str(getattr(config, "repo_url", "") or "").rstrip("/")
 
     if page.file.src_uri == "index.md":
         page.edit_url = f"{repo_url}/edit/main/README.md"
