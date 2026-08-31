@@ -9,8 +9,6 @@ on:
 # Allow the workflow to publish to GitHub Pages
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Only one concurrent Pages deployment; don't cancel an in-progress one
 concurrency:
@@ -35,9 +33,6 @@ jobs:
       - name: Build site
         run: uv run mkdocs build --strict
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -47,10 +42,17 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
