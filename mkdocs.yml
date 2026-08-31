@@ -1,0 +1,53 @@
+site_name: src-get
+site_description: Clone git repositories into a structured directory hierarchy mirroring the remote host and path.
+site_author: Jeffrey Hulten
+repo_url: https://github.com/jhulten/src-get
+repo_name: jhulten/src-get
+edit_uri: edit/main/
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.details
+  - tables
+
+nav:
+  - Home: index.md
+  - Specification: spec.md
+  - Agents:
+      - Domain Docs: agents/domain.md
+      - Issue Tracker: agents/issue-tracker.md
+      - Triage Labels: agents/triage-labels.md
