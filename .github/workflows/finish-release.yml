@@ -38,10 +38,16 @@ jobs:
     needs: detect-version
     if: needs.detect-version.outputs.is-new == 'true'
     runs-on: ubuntu-latest
+    # `release` carries RELEASE_PAT. The tag push and the release creation both
+    # need it: a release created with the default GITHUB_TOKEN does not emit a
+    # `release: published` event, so publish.yml would never fire.
+    environment: release
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
@@ -58,31 +64,12 @@ jobs:
           git tag "v${version}"
           git push origin "v${version}"
 
+      # Creating the release with RELEASE_PAT (not github.token) is what lets
+      # publish.yml pick it up. The built artifacts are attached here and
+      # re-downloaded by publish.yml, so PyPI gets these exact files.
       - name: Create GitHub release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           version="${{ needs.detect-version.outputs.version }}"
           gh release create "v${version}" dist/* --generate-notes
-
-      - name: Upload built package for the publish job
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/*
-
-  publish-pypi:
-    needs: finish-release
-    runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
-    steps:
-      - name: Download built package
-        uses: actions/download-artifact@v7
-        with:
-          name: dist
-          path: dist
-
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1

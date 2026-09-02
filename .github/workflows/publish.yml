@@ -1,0 +1,41 @@
+name: Publish to PyPI
+
+# Runs at a tag ref (`refs/tags/v*`), which is what the `pypi` GitHub
+# environment's deployment branch policy admits. Publishing cannot live in
+# finish-release.yml: that workflow is triggered by a push to `main`, so its
+# ref is `refs/heads/main` and the environment rejects the deployment.
+on:
+  release:
+    types: [published]
+  # Re-run a publish that failed after the release was already created, e.g.
+  # `gh workflow run publish.yml --ref v1.2.3`. Only works for tags whose tree
+  # contains this file.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: >
+          gh release download "$TAG"
+          --repo ${{ github.repository }}
+          --dir dist
+          --pattern '*.whl'
+          --pattern '*.tar.gz'
+
+      # Trusted publishing (OIDC, no stored token). The PyPI project's
+      # publisher entry must name this workflow file: publish.yml.
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
