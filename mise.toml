@@ -70,7 +70,7 @@ esac
 
 version="${version#v}"  # tolerate a leading 'v' on explicit input
 
-if git rev-parse "v${version}" >/dev/null 2>&1; then
+if git show-ref --verify --quiet "refs/tags/v${version}"; then
   echo "release: v${version} is already tagged" >&2
   exit 1
 fi
