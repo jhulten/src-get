@@ -3,19 +3,76 @@ uv = "latest"
 python = "3.13"
 
 [tasks.release]
-description = "Start a release: bump version, test, build, open a PR against main"
+description = "Start a release: pick the next version, bump, test, build, open a PR against main"
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
-if [ -z "${1:-}" ]; then
-  echo "usage: mise run release <version>" >&2
+
+# Land on a clean, up-to-date main so the diff and the release reflect what
+# will actually ship.
+git checkout main
+git pull --ff-only origin main
+
+last_tag="$(git tag --list 'v*' --sort=-v:refname | head -1)"
+
+# Deterministic next-version candidates from the current pyproject version.
+# No commit-message heuristics: uv computes the exact major/minor/patch bump,
+# and the human chooses which one to ship.
+bump() { uv version --dry-run --bump "$1" --short; }
+
+request="${1:-}"
+case "$request" in
+  major|minor|patch)
+    version="$(bump "$request")"
+    ;;
+  "")
+    if [ ! -t 0 ]; then
+      echo "release: no version given and no TTY; pass major|minor|patch|<x.y.z>" >&2
+      exit 1
+    fi
+    echo
+    if [ -n "$last_tag" ]; then
+      echo "Changes since ${last_tag}:"
+      echo
+      git log --no-merges --pretty='  %h %s' "${last_tag}..HEAD" || true
+      echo
+      git diff --stat "${last_tag}..HEAD" || true
+    else
+      echo "No previous v* tag; full history:"
+      git log --oneline
+    fi
+    echo
+    echo "Current version: $(uv version --short)"
+    echo
+    patch="$(bump patch)"; minor="$(bump minor)"; major="$(bump major)"
+    PS3="Select the release version: "
+    select _ in \
+      "patch  -> ${patch}" \
+      "minor  -> ${minor}" \
+      "major  -> ${major}" \
+      "custom (type an exact version)" \
+      "quit"; do
+      case "${REPLY:-}" in
+        1) version="$patch"; break;;
+        2) version="$minor"; break;;
+        3) version="$major"; break;;
+        4) read -rp "Exact version (X.Y.Z): " version; [ -n "${version:-}" ] && break;;
+        5) echo "Aborted."; exit 0;;
+        *) echo "Pick 1-5.";;
+      esac
+    done
+    ;;
+  *)
+    version="$request"  # explicit version string
+    ;;
+esac
+
+if git rev-parse "v${version}" >/dev/null 2>&1; then
+  echo "release: v${version} is already tagged" >&2
   exit 1
 fi
-version="$1"
-branch="release/v${version}"
 
-git checkout main
-git pull origin main
+branch="release/v${version}"
 git checkout -b "$branch"
 
 uv version "$version"
