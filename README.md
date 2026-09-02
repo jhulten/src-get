@@ -97,15 +97,24 @@ actually lands on `main`.
 ### 1. Start the release
 
 ```sh
-mise run release <version>
+mise run release            # interactive: shows the diff since the last
+                            # release, then pick patch/minor/major
+mise run release patch      # or name the bump directly (patch|minor|major)
+mise run release 1.2.3      # or pin an exact version
 ```
 
-1. Branches from `main` as `release/v<version>`.
-2. Bumps the version: `uv version <version>` — updates `pyproject.toml` and
-   re-locks `uv.lock`.
-3. Runs the test suite and does a sanity build: `uv run pytest`, `uv build`.
-4. Commits the version bump and pushes the branch.
-5. Opens a PR against `main` with `gh pr create`.
+1. Checks out `main` and fast-forwards it, so the diff and the release reflect
+   what will ship.
+2. With no argument, prints the commits and `git diff --stat` since the last
+   `v*` tag, then offers the exact next `patch`/`minor`/`major` versions
+   (computed by `uv version --dry-run --bump`) for you to choose — no
+   commit-message guessing. A `major`/`minor`/`patch` argument or an explicit
+   version skips the prompt.
+3. Branches from `main` as `release/v<version>` and bumps the version:
+   `uv version <version>` — updates `pyproject.toml` and re-locks `uv.lock`.
+4. Runs the test suite and does a sanity build: `uv run pytest`, `uv build`.
+5. Commits the version bump, pushes the branch, and opens a PR against `main`
+   with `gh pr create`.
 
 Get the PR reviewed and merged like any other change.
 
