@@ -128,13 +128,31 @@ touches `pyproject.toml` — which a merged release PR always does:
    change, or this version was already released), the workflow stops here.
 2. **`finish-release`** (only for a genuinely new version) builds the package
    fresh from `main`'s actual merged history, tags `v<version>`, pushes the
-   tag, and publishes a GitHub release with the built artifacts.
-3. **`publish-pypi`** takes the exact artifact `finish-release` built (handed
-   off via a workflow artifact, not rebuilt) and publishes it via
+   tag, and publishes a GitHub release with the built artifacts. It runs in the
+   `release` environment for `RELEASE_PAT`: a release created with the default
+   `GITHUB_TOKEN` does not emit a `release: published` event, so step 3 would
+   never fire.
+3. **`.github/workflows/publish.yml`** triggers on that `release: published`
+   event, downloads the exact artifacts attached to the release (nothing is
+   rebuilt), and uploads them via
    [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC
    — no stored API tokens). This job runs against the `pypi`
    [GitHub environment](https://github.com/jhulten/src-get/settings/environments),
    which requires manual approval on each run before it's allowed to publish.
+
+Publishing is a separate workflow on purpose. The `pypi` environment's
+deployment branch policy only admits refs matching the **tag** `v*`;
+`finish-release.yml` runs on a push to `main`, so its ref is `refs/heads/main`
+and the environment rejects it. `publish.yml` runs at the tag ref, so it
+passes. The PyPI project's trusted-publisher entry must therefore name
+`publish.yml` as the workflow.
+
+If a publish fails after the release already exists, re-run it against the tag
+rather than re-cutting the release:
+
+```sh
+gh workflow run publish.yml --ref v1.2.3
+```
 
 Releases and tags are never created by pushing directly to `main` — only by
 `finish-release` reacting to a merge, which keeps the whole flow compatible

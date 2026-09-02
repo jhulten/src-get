@@ -18,7 +18,7 @@ Agent-facing skill for using the `src-get` tool lives at `skills/src-get/SKILL.m
 
 ### Release task
 
-The `mise run release` task lives in `mise.toml` (interactive next-version picker: shows the diff since the last `v*` tag, then patch/minor/major/exact). Keep the README "Release" section in sync whenever the task's interface changes: the accepted arguments (`patch`/`minor`/`major`/exact version), the interactive flow, or the branch/PR steps. The downstream half lives in `.github/workflows/finish-release.yml`.
+The `mise run release` task lives in `mise.toml` (interactive next-version picker: shows the diff since the last `v*` tag, then patch/minor/major/exact). Keep the README "Release" section in sync whenever the task's interface changes: the accepted arguments (`patch`/`minor`/`major`/exact version), the interactive flow, or the branch/PR steps. The downstream half lives in `.github/workflows/finish-release.yml` (tag + GitHub release) and `.github/workflows/publish.yml` (PyPI upload, triggered by `release: published` so it runs at a `v*` tag ref, which is what the `pypi` environment's deployment branch policy allows).
 
 ### Branch hygiene
 
