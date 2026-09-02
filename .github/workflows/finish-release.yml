@@ -38,6 +38,10 @@ jobs:
     needs: detect-version
     if: needs.detect-version.outputs.is-new == 'true'
     runs-on: ubuntu-latest
+    # Gate the admin-bypass PAT behind an environment so a deployment
+    # branch rule can restrict it to main; the RELEASE_PAT lives as an
+    # environment secret, not a repo-wide one.
+    environment: release
     permissions:
       contents: write
     steps:
