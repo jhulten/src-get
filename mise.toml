@@ -8,6 +8,12 @@ run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 
+request="${1:-}"
+if [ -z "$request" ] && [ ! -t 0 ]; then
+  echo "release: no version given and no TTY; pass major|minor|patch|<x.y.z>" >&2
+  exit 1
+fi
+
 # Land on a clean, up-to-date main so the diff and the release reflect what
 # will actually ship.
 git checkout main
@@ -20,16 +26,11 @@ last_tag="$(git tag --list 'v*' --sort=-v:refname | head -1)"
 # and the human chooses which one to ship.
 bump() { uv version --dry-run --bump "$1" --short; }
 
-request="${1:-}"
 case "$request" in
   major|minor|patch)
     version="$(bump "$request")"
     ;;
   "")
-    if [ ! -t 0 ]; then
-      echo "release: no version given and no TTY; pass major|minor|patch|<x.y.z>" >&2
-      exit 1
-    fi
     echo
     if [ -n "$last_tag" ]; then
       echo "Changes since ${last_tag}:"
