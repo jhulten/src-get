@@ -38,16 +38,18 @@ jobs:
     needs: detect-version
     if: needs.detect-version.outputs.is-new == 'true'
     runs-on: ubuntu-latest
-    # `release` carries RELEASE_PAT. The tag push and the release creation both
-    # need it: a release created with the default GITHUB_TOKEN does not emit a
+    # `release` carries RELEASE_PAT, which only the release-creation step uses:
+    # a release created with the default GITHUB_TOKEN does not emit a
     # `release: published` event, so publish.yml would never fire.
     environment: release
     permissions:
       contents: write
     steps:
+      # Deliberately checked out with the default job-scoped GITHUB_TOKEN.
+      # Passing the PAT here would persist it in .git/config for every later
+      # step, and the tag push does not need it: `protect-versions` restricts
+      # deletion/non-fast-forward/update on refs/tags/v*, not creation.
       - uses: actions/checkout@v7
-        with:
-          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.0.1
@@ -65,8 +67,9 @@ jobs:
           git push origin "v${version}"
 
       # Creating the release with RELEASE_PAT (not github.token) is what lets
-      # publish.yml pick it up. The built artifacts are attached here and
-      # re-downloaded by publish.yml, so PyPI gets these exact files.
+      # publish.yml pick it up. This is the only step that needs the PAT. The
+      # built artifacts are attached here and re-downloaded by publish.yml, so
+      # PyPI gets these exact files.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
