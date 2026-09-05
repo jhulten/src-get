@@ -1,6 +1,6 @@
 [project]
 name = "src-get"
-version = "0.2.5"
+version = "0.2.6"
 description = "Clone git repositories into a structured directory hierarchy mirroring the remote host and path, similar to Go's workspace layout."
 readme = "README.md"
 authors = [{ name = "Jeffrey Hulten", email = "jhulten@gmail.com" }]
