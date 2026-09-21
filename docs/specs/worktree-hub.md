@@ -97,6 +97,14 @@ to `git worktree add` or to fetches on subsequent invocations. `--bare` in the
 passthrough is redundant in hub mode (the store is always bare) and MUST NOT
 alter the hub path the way it does in single-checkout mode.
 
+Step 2 hard-codes `origin` as the remote name and assumes a bare clone, so any
+passthrough flag that would violate either assumption is rejected up front,
+before `git clone` runs, with an error naming the conflicting flag — not
+discovered after the fact by a broken `fetch origin`, and not silently
+overridden. This includes at least `--origin <name>`/`-o <name>` for any name
+other than `origin`, and `--no-bare` (or any other flag that would produce a
+non-bare clone).
+
 ---
 
 ## Behavior
@@ -137,12 +145,16 @@ directory).
 
 Refresh the remote's default branch explicitly rather than trusting a
 possibly stale `refs/remotes/origin/HEAD`: run
-`git -C <hub>/.bare remote set-head origin --auto` (falling back to
-`ls-remote --symref origin HEAD` if the remote can't be reached) on **every**
-invocation of this step — hub creation and every later "update" alike — then
-read the result from `refs/remotes/origin/HEAD`. A pre-existing `origin/HEAD`
-is a cache to overwrite, never treated as authoritative on its own; the bare
-clone's local `HEAD` is clone-time state and is not consulted at all. If its
+`git -C <hub>/.bare remote set-head origin --auto` on **every** invocation of
+this step — hub creation and every later "update" alike — then read the
+result from `refs/remotes/origin/HEAD`. A pre-existing `origin/HEAD` is a
+cache to overwrite, never treated as authoritative on its own; the bare
+clone's local `HEAD` is clone-time state and is not consulted at all.
+`set-head --auto` itself queries the remote, so there is no separate
+`ls-remote` fallback to fall back to: if it fails, the remote is unreachable
+and this step fails with it, non-zero exit, rather than reaching for a second
+mechanism that would face the identical reachability problem and — unlike
+`set-head` — doesn't even write `refs/remotes/origin/HEAD` on its own. If its
 worktree `<hub>/<default>` does not exist, add it using the same
 tracking-establishment rules as Step 4 — an untracked local `<default>` branch
 seeded by the initial clone must not be checked out as-is.
@@ -166,11 +178,18 @@ it and this step is a no-op.
     check that untracked branch out instead of `origin/<branch>`, so it is
     never handled implicitly:
     - If `<branch>` exists locally with no upstream, compare it to
-      `origin/<branch>`. If they're identical or `<branch>` is a fast-forward
-      ancestor of `origin/<branch>`, set the upstream
+      `origin/<branch>`. If they're identical, set the upstream
       (`git -C <hub>/.bare branch --set-upstream-to=origin/<branch> <branch>`)
-      and check it out. If they've diverged, refuse with a clear, non-zero-exit
-      error rather than silently checking out a stale or conflicting branch.
+      and check it out. If `<branch>` is a fast-forward ancestor of
+      `origin/<branch>` (the common case: the clone-seeded local branch has
+      simply fallen behind since Step 2's fetch), advance it before checkout
+      — `git -C <hub>/.bare branch -f <branch> origin/<branch>` — then set the
+      upstream and check it out, so the worktree is created at the current
+      commit rather than a stale one; this path is only reached on first
+      creation, so there is no later reconciliation step to catch a stale
+      checkout otherwise. If they've diverged, refuse with a clear,
+      non-zero-exit error rather than silently checking out a stale or
+      conflicting branch.
     - Otherwise, if `origin/<branch>` exists, create the local branch
       explicitly tracking it:
       `git -C <hub>/.bare worktree add --track -b <branch> <hub>/<branch>
@@ -201,8 +220,8 @@ Print the absolute path of the resolved worktree (`<hub>/<branch>`) to stdout
 and nothing else — never the hub root, since the hub root is not a checkout,
 and never interleaved with any other line. Every other command this spec
 invokes along the way (`clone --bare`, `fetch`, `worktree add`,
-`remote set-head`, `symbolic-ref`, `ls-remote`, `pull --ff-only`, and git's own
-progress output) is redirected to stderr. This preserves the `SPEC.md`
+`remote set-head`, `branch -f`, `pull --ff-only`, and git's own progress
+output) is redirected to stderr. This preserves the `SPEC.md`
 contract that stdout is *exactly* the directory the shell integration should
 `cd` into — a single line, with no discovery or diagnostic output mixed in.
 
@@ -210,8 +229,12 @@ contract that stdout is *exactly* the directory the shell integration should
 
 ## Worktree naming
 
-Two transformations apply to `--branch`, in order, before any filesystem
-operation touches it:
+One mapping from branch name to worktree directory applies everywhere a
+branch name becomes a path — the explicit `--branch` request in Step 4 and
+the remote-resolved default branch in Step 3 alike, so a default like
+`release/v1.2` gets the same flat layout an explicit `--branch release/v1.2`
+would. Two transformations apply, in order, before any filesystem operation
+touches the branch name:
 
 1. **Reject unsafe input first.** Any branch name containing `..`, a leading
    `/`, or any other component `git check-ref-format` would reject is refused
