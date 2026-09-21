@@ -135,10 +135,17 @@ directory).
 
 ### 3. Ensure the default-branch worktree
 
-Determine the remote's default branch (resolved from `refs/remotes/origin/HEAD`,
-falling back to `git -C <hub>/.bare symbolic-ref` /
-`ls-remote --symref origin HEAD`). If its worktree `<hub>/<default>` does not
-exist, add it: `git -C <hub>/.bare worktree add <hub>/<default> <default>`.
+Refresh the remote's default branch explicitly rather than trusting a
+possibly stale `refs/remotes/origin/HEAD`: run
+`git -C <hub>/.bare remote set-head origin --auto` (falling back to
+`ls-remote --symref origin HEAD` if the remote can't be reached) on **every**
+invocation of this step — hub creation and every later "update" alike — then
+read the result from `refs/remotes/origin/HEAD`. A pre-existing `origin/HEAD`
+is a cache to overwrite, never treated as authoritative on its own; the bare
+clone's local `HEAD` is clone-time state and is not consulted at all. If its
+worktree `<hub>/<default>` does not exist, add it using the same
+tracking-establishment rules as Step 4 — an untracked local `<default>` branch
+seeded by the initial clone must not be checked out as-is.
 
 The default-branch worktree is **always seeded on hub creation**, even when
 `--branch` names a different branch. It serves as a stable anchor — new
@@ -153,41 +160,79 @@ resolved in Step 3. When it equals the default branch, Step 3 already created
 it and this step is a no-op.
 
 - **Worktree `<hub>/<branch>` does not exist:**
-  - If the branch exists on the remote, add a tracking worktree:
-    `git -C <hub>/.bare worktree add <hub>/<branch> <branch>`.
-  - If the branch does not exist anywhere, create it from the default branch:
-    `git -C <hub>/.bare worktree add -b <branch> <hub>/<branch> origin/HEAD`.
-- **Worktree already exists:** leave it in place. Optionally
-  `git -C <hub>/<branch> pull --ff-only` when it is on a tracking branch;
-  never force or discard local changes.
+  - A local branch `<branch>` may already exist and be untracked — `clone
+    --bare` seeds local branches for every remote head, with no upstream
+    configured. Relying on git's default DWIM behavior here would silently
+    check that untracked branch out instead of `origin/<branch>`, so it is
+    never handled implicitly:
+    - If `<branch>` exists locally with no upstream, compare it to
+      `origin/<branch>`. If they're identical or `<branch>` is a fast-forward
+      ancestor of `origin/<branch>`, set the upstream
+      (`git -C <hub>/.bare branch --set-upstream-to=origin/<branch> <branch>`)
+      and check it out. If they've diverged, refuse with a clear, non-zero-exit
+      error rather than silently checking out a stale or conflicting branch.
+    - Otherwise, if `origin/<branch>` exists, create the local branch
+      explicitly tracking it:
+      `git -C <hub>/.bare worktree add --track -b <branch> <hub>/<branch>
+      origin/<branch>`.
+    - If neither a local branch nor `origin/<branch>` exists, create it from
+      the default branch:
+      `git -C <hub>/.bare worktree add -b <branch> <hub>/<branch> origin/HEAD`.
+- **Worktree `<hub>/<branch>` already exists:** confirm it first — a directory
+  at that path is not proof it's the right worktree. Run
+  `git -C <hub>/.bare worktree list --porcelain` and require the path to be
+  registered *and* checked out to `<branch>`; an unrelated or stale directory
+  there is a hub-consistency error, not a match. Once confirmed, always
+  reconcile it: `git -C <hub>/.bare fetch origin` followed by
+  `git -C <hub>/<branch> pull --ff-only`. A failed or non-fast-forward pull
+  (diverged history, local changes in the way) is a hard error with a
+  non-zero exit code; the worktree is left untouched either way — never force
+  or discard local changes.
 
-A branch may be checked out in only one worktree at a time (git enforces this).
-If the requested branch is already checked out in a *different* worktree
-directory, report that path rather than failing.
+A branch may be checked out in only one worktree at a time (git enforces
+this). If `git worktree list --porcelain` shows the requested branch already
+checked out at a *different* path than `<hub>/<branch>`, refuse with a
+non-zero exit and report that actual path in the error message — the command
+never silently succeeds outside the hub layout.
 
 ### 5. Report the working directory
 
-Print the absolute path of the resolved worktree (`<hub>/<branch>`) as the last
-line of stdout — never the hub root, since the hub root is not a checkout. This
-preserves the `SPEC.md` contract that stdout carries exactly the directory the
-shell integration should `cd` into. Git's own output continues to stream to the
-terminal.
+Print the absolute path of the resolved worktree (`<hub>/<branch>`) to stdout
+and nothing else — never the hub root, since the hub root is not a checkout,
+and never interleaved with any other line. Every other command this spec
+invokes along the way (`clone --bare`, `fetch`, `worktree add`,
+`remote set-head`, `symbolic-ref`, `ls-remote`, `pull --ff-only`, and git's own
+progress output) is redirected to stderr. This preserves the `SPEC.md`
+contract that stdout is *exactly* the directory the shell integration should
+`cd` into — a single line, with no discovery or diagnostic output mixed in.
 
 ---
 
 ## Worktree naming
 
-The worktree directory name is the branch name with slashes preserved as
-nested directories, matching how the branch reads:
+Two transformations apply to `--branch`, in order, before any filesystem
+operation touches it:
 
-| Branch | Worktree directory |
-|--------|--------------------|
-| `main` | `<hub>/main` |
-| `feature-x` | `<hub>/feature-x` |
-| `release/v1.2` | `<hub>/release/v1.2` |
+1. **Reject unsafe input first.** Any branch name containing `..`, a leading
+   `/`, or any other component `git check-ref-format` would reject is refused
+   before the hub path is ever constructed — a request like
+   `--branch ../outside` never reaches a path-existence check.
+2. **Flatten slashes.** `/` is replaced with `--` so the branch always maps to
+   a single directory directly under the hub root, never a nested one:
 
-Because `.bare` and `.git` are reserved names at the hub root, a branch literally
-named `bare` or `git` is rejected with a clear error.
+   | Branch | Worktree directory |
+   |--------|--------------------|
+   | `main` | `<hub>/main` |
+   | `feature-x` | `<hub>/feature-x` |
+   | `release/v1.2` | `<hub>/release--v1.2` |
+
+   That encoding is only unambiguous if `--` can't already appear in a branch
+   name — `release/v1.2` and a hypothetical branch literally named
+   `release--v1.2` must not collide. So branch names containing a literal
+   `--` are rejected with a clear error; that, not a name collision with
+   `.bare`/`.git`, is the actual reserved-name rule. (`bare` and `git` map to
+   `<hub>/bare` and `<hub>/git`, which don't collide with `<hub>/.bare` or
+   `<hub>/.git`, so plain `bare`/`git` branch names are *not* restricted.)
 
 ---
 
@@ -204,8 +249,9 @@ hook, is deferred to Future Work.
 
 ## Shell integration
 
-The existing `shell/src-get.sh` function needs no change: it captures the last
-line of stdout and `cd`s to it. In hub mode that line is the worktree path, so
+The existing `shell/src-get.sh` function needs no change: it captures stdout
+verbatim as the repo path and `cd`s to it, trusting the binary never to write
+anything else there (see Step 5). In hub mode stdout is the worktree path, so
 `src-get --worktree <url>` drops the user directly into the default branch's
 working tree, and `src-get -w <url> -b feature-x` drops them into that branch's
 tree — creating both the hub and the worktree first if needed.
